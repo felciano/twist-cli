@@ -1,3 +1,9 @@
+## [4.0.2](https://github.com/todoist/twist-cli/compare/v4.0.1...v4.0.2) (2026-11-19)
+
+### Bug Fixes
+
+- **deps:** update dependency marked to v18.2.0 ([#370](https://github.com/todoist/twist-cli/issues/370)) ([88b8981](https://github.com/todoist/twist-cli/commit/88b898110ba3778733e1b1fc1469d27270f22c36))
+
 ## [4.0.1](https://github.com/todoist/twist-cli/compare/v4.0.0...v4.0.1) (2026-11-11)
 
 ### Bug Fixes
