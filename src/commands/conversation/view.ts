@@ -56,11 +56,12 @@ export async function viewConversation(
         ? {
               conversation: await client.conversations.getConversation(conversationId),
               messages: await fetchAllByObjIndex(
-                  ({ fromObjIndex, limit }) =>
+                  ({ fromObjIndex, toObjIndex, limit }) =>
                       client.conversationMessages.getMessages({
                           conversationId,
                           ...range,
                           fromObjIndex,
+                          toObjIndex,
                           orderBy: 'asc',
                           limit,
                       }),

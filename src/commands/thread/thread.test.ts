@@ -1669,3 +1669,33 @@ describe('thread view --all', () => {
         )
     })
 })
+
+describe('thread view --all against a newest-first server', () => {
+    beforeEach(() => {
+        vi.resetAllMocks()
+    })
+
+    it('pages backwards with toObjIndex and returns every comment in order', async () => {
+        const all = Array.from({ length: 1001 }, (_, i) => createComment(7000 + i, i))
+        const client = createClient({ users: { 2: { id: 2, name: 'Bob' } } })
+        client.comments.getComments.mockImplementation((async (args: {
+            toObjIndex?: number
+            limit: number
+        }) =>
+            [...all]
+                .reverse()
+                .filter((c) => args.toObjIndex === undefined || c.objIndex <= args.toObjIndex)
+                .slice(0, args.limit)) as never)
+        apiMocks.getTwistClient.mockResolvedValue(client)
+        const consoleSpy = captureConsole()
+
+        await createProgram().parseAsync(['node', 'tw', 'thread', 'view', '500', '--all', '--json'])
+
+        const output = JSON.parse(consoleSpy.mock.calls[0][0])
+        expect(output.comments.map((c: { id: number }) => c.id)).toEqual(all.map((c) => c.id))
+        const calls = client.comments.getComments.mock.calls.map(
+            ([args]) => args as Record<string, unknown>,
+        )
+        expect(calls.map((c) => c.toObjIndex)).toEqual([undefined, 501, 2, 0])
+    })
+})

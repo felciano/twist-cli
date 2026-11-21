@@ -111,11 +111,12 @@ export async function viewThread(ref: string, options: ViewOptions): Promise<voi
         ? {
               thread: await client.threads.getThread(threadId),
               comments: await fetchAllByObjIndex(
-                  ({ fromObjIndex, limit }) =>
+                  ({ fromObjIndex, toObjIndex, limit }) =>
                       client.comments.getComments({
                           threadId,
                           newerThan,
                           fromObjIndex,
+                          toObjIndex,
                           orderBy: 'asc',
                           limit,
                       }),
