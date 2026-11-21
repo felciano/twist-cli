@@ -5,6 +5,7 @@ import { formatRelativeDate } from '../../lib/dates.js'
 import { renderMarkdown } from '../../lib/markdown.js'
 import type { PaginatedViewOptions } from '../../lib/options.js'
 import { colors, formatJson, pluralize } from '../../lib/output.js'
+import { fetchAllByObjIndex, MAX_API_PAGE_SIZE, parsePageSize } from '../../lib/pagination.js'
 import { assertChannelIsPublic } from '../../lib/public-channels.js'
 import { extractId, parseRef, resolveThreadId } from '../../lib/refs.js'
 import { printComment, printSeparator } from './helpers.js'
@@ -13,6 +14,23 @@ type ViewOptions = PaginatedViewOptions & {
     comment?: string
     unread?: boolean
     context?: string
+}
+
+async function fetchFirstPage(
+    client: TwistApi,
+    threadId: number,
+    newerThan: Date | undefined,
+    limitOption: string | undefined,
+) {
+    const limit = limitOption ? parseInt(limitOption, 10) : 50
+    const [threadResponse, commentsResponse] = await client.batch(
+        client.threads.getThread(threadId, { batch: true }),
+        client.comments.getComments({ threadId, newerThan, limit }, { batch: true }),
+    )
+    return {
+        thread: assertBatchData(threadResponse, 'thread'),
+        comments: assertBatchData(commentsResponse, 'comments'),
+    }
 }
 
 async function viewSingleComment(
@@ -88,22 +106,23 @@ export async function viewThread(ref: string, options: ViewOptions): Promise<voi
         return viewSingleComment(client, threadId, commentId, options)
     }
 
-    const limit = options.limit ? parseInt(options.limit, 10) : 50
-
-    const [threadResponse, commentsResponse] = await client.batch(
-        client.threads.getThread(threadId, { batch: true }),
-        client.comments.getComments(
-            {
-                threadId,
-                newerThan: options.since ? new Date(options.since) : undefined,
-                limit,
-            },
-            { batch: true },
-        ),
-    )
-
-    const thread = assertBatchData(threadResponse, 'thread')
-    const comments = assertBatchData(commentsResponse, 'comments')
+    const newerThan = options.since ? new Date(options.since) : undefined
+    const { thread, comments } = options.all
+        ? {
+              thread: await client.threads.getThread(threadId),
+              comments: await fetchAllByObjIndex(
+                  ({ fromObjIndex, limit }) =>
+                      client.comments.getComments({
+                          threadId,
+                          newerThan,
+                          fromObjIndex,
+                          orderBy: 'asc',
+                          limit,
+                      }),
+                  parsePageSize(options.limit, MAX_API_PAGE_SIZE),
+              ),
+          }
+        : await fetchFirstPage(client, threadId, newerThan, options.limit)
 
     await assertChannelIsPublic(thread.channelId, thread.workspaceId)
 

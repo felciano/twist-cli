@@ -9,6 +9,8 @@ export type PaginatedViewOptions = ViewOptions & {
     limit?: string
     since?: string
     until?: string
+    /** Fetch the complete history; `limit` becomes the per-request page size. */
+    all?: boolean
 }
 
 export type MutationOptions = {

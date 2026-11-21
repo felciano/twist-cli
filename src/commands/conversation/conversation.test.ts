@@ -998,3 +998,162 @@ describe('conversation view --since/--until', () => {
         ).rejects.toMatchObject({ code: 'INVALID_DATE' })
     })
 })
+
+describe('conversation list', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    // Realistic ordering: the API orders by id (desc) when before_id is used.
+    const active = Array.from({ length: 120 }, (_, i) =>
+        createConversation(2000 - i, [1, 2], new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString()),
+    )
+    const archived = [
+        {
+            ...createConversation(50, [1, 2, 3], '2025-06-01T00:00:00.000Z'),
+            archived: true,
+            title: 'Old group',
+        },
+    ]
+
+    function setup() {
+        const client = createClient({
+            activeConversations: active,
+            archivedConversations: archived,
+            users: {
+                1: { id: 1, name: 'Me' },
+                2: { id: 2, name: 'Alice' },
+                3: { id: 3, name: 'Bob' },
+            },
+        })
+        apiMocks.getTwistClient.mockResolvedValue(client)
+        return client
+    }
+
+    it('pages through every active conversation and applies --limit client-side', async () => {
+        const client = setup()
+        const consoleSpy = captureConsole()
+        await createProgram().parseAsync([
+            'node',
+            'tw',
+            'conversation',
+            'list',
+            '--limit',
+            '5',
+            '--json',
+        ])
+        const output = JSON.parse(consoleSpy.mock.calls[0][0])
+        expect(output).toHaveLength(5)
+        expect(output[0].id).toBe(1881) // most recently active
+        const calls = client.conversations.getConversations.mock.calls.map(([args]) => args)
+        expect(calls.map((c) => c.beforeId)).toEqual([undefined, 1901])
+        expect(calls.every((c) => c.archived === undefined)).toBe(true)
+    })
+
+    it('--archive-filter all --all merges active and archived lists', async () => {
+        const client = setup()
+        const consoleSpy = captureConsole()
+        await createProgram().parseAsync([
+            'node',
+            'tw',
+            'conversation',
+            'list',
+            '--archive-filter',
+            'all',
+            '--all',
+            '--ndjson',
+        ])
+        const lines = String(consoleSpy.mock.calls[0][0]).trim().split('\n')
+        expect(lines).toHaveLength(121)
+        expect(lines.map((l) => JSON.parse(l).id)).toContain(50)
+        expect(client.conversations.getConversations).toHaveBeenCalledWith(
+            expect.objectContaining({ archived: true }),
+        )
+    })
+
+    it('--archive-filter archived returns only archived conversations', async () => {
+        setup()
+        const consoleSpy = captureConsole()
+        await createProgram().parseAsync([
+            'node',
+            'tw',
+            'conversation',
+            'list',
+            '--archive-filter',
+            'archived',
+            '--json',
+        ])
+        expect(JSON.parse(consoleSpy.mock.calls[0][0]).map((c: { id: number }) => c.id)).toEqual([
+            50,
+        ])
+    })
+
+    it('rejects workspace given twice', async () => {
+        setup()
+        await expect(
+            createProgram().parseAsync([
+                'node',
+                'tw',
+                'conversation',
+                'list',
+                '1',
+                '--workspace',
+                '1',
+            ]),
+        ).rejects.toMatchObject({ code: 'CONFLICTING_OPTIONS' })
+    })
+})
+
+describe('conversation view --all', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    it('pages through every message with fromObjIndex and orderBy asc', async () => {
+        const conversation = createConversation(42, [1, 2], '2026-03-08T10:00:00.000Z')
+        const all = Array.from({ length: 1205 }, (_, i) => ({
+            id: 10_000 + i,
+            objIndex: i,
+            content: `m${i}`,
+            creator: 1 + (i % 2),
+            conversationId: 42,
+            posted: new Date('2026-03-08T10:05:00.000Z'),
+            reactions: [],
+        }))
+        const client = createClient({
+            activeConversations: [conversation],
+            users: { 1: { id: 1, name: 'Me' }, 2: { id: 2, name: 'Alice' } },
+        })
+        client.conversationMessages.getMessages.mockImplementation((async ({
+            fromObjIndex,
+            limit,
+        }: {
+            fromObjIndex?: number
+            limit: number
+        }) =>
+            all
+                .filter((m) => fromObjIndex === undefined || m.objIndex >= fromObjIndex)
+                .slice(0, limit)) as never)
+        apiMocks.getTwistClient.mockResolvedValue(client)
+        const consoleSpy = captureConsole()
+
+        await createProgram().parseAsync([
+            'node',
+            'tw',
+            'conversation',
+            'view',
+            '42',
+            '--all',
+            '--json',
+        ])
+
+        const output = JSON.parse(consoleSpy.mock.calls[0][0])
+        expect(output.messages).toHaveLength(1205)
+        expect(output.messages.map((m: { id: number }) => m.id)).toEqual(all.map((m) => m.id))
+        const calls = client.conversationMessages.getMessages.mock.calls.map(
+            ([args]) => args as Record<string, unknown>,
+        )
+        expect(calls[0]).toMatchObject({ conversationId: 42, orderBy: 'asc', limit: 500 })
+        expect(calls[0].fromObjIndex).toBeUndefined()
+    })
+})

@@ -1601,3 +1601,71 @@ describe('thread create --file', () => {
         expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining(files.png))
     })
 })
+
+describe('thread view --all', () => {
+    beforeEach(() => {
+        vi.resetAllMocks()
+    })
+
+    function setup(total: number) {
+        const all = Array.from({ length: total }, (_, i) => createComment(5000 + i, i))
+        const client = createClient({
+            users: { 1: { id: 1, name: 'Alice' }, 2: { id: 2, name: 'Bob' } },
+        })
+        client.comments.getComments.mockImplementation((async (args: {
+            fromObjIndex?: number
+            limit: number
+        }) =>
+            all
+                .filter((c) => args.fromObjIndex === undefined || c.objIndex >= args.fromObjIndex)
+                .slice(0, args.limit)) as never)
+        apiMocks.getTwistClient.mockResolvedValue(client)
+        return { client, all }
+    }
+
+    it('fetches every comment beyond the 500-item page limit', async () => {
+        const { client, all } = setup(1001)
+        const consoleSpy = captureConsole()
+
+        await createProgram().parseAsync(['node', 'tw', 'thread', 'view', '500', '--all', '--json'])
+
+        const output = JSON.parse(consoleSpy.mock.calls[0][0])
+        expect(output.comments.map((c: { id: number }) => c.id)).toEqual(all.map((c) => c.id))
+        const calls = client.comments.getComments.mock.calls.map(
+            ([args]) => args as Record<string, unknown>,
+        )
+        expect(calls[0]).toMatchObject({ threadId: 500, orderBy: 'asc', limit: 500 })
+        expect(calls.map((c) => c.fromObjIndex)).toEqual([undefined, 499, 998, 1000])
+    })
+
+    it('uses --limit as the page size with --all', async () => {
+        const { client } = setup(30)
+        captureConsole()
+        await createProgram().parseAsync([
+            'node',
+            'tw',
+            'thread',
+            'view',
+            '500',
+            '--all',
+            '--limit',
+            '10',
+            '--ndjson',
+        ])
+        // 0-9, 9-18, 18-27, 27-29, then [29] alone confirms the end (inclusive bound)
+        expect(client.comments.getComments.mock.calls).toHaveLength(5)
+        expect(client.comments.getComments.mock.calls[0][0]).toMatchObject({ limit: 10 })
+    })
+
+    it('keeps the default single-request behaviour without --all', async () => {
+        const client = createClient({ comments: [createComment(1, 1)] })
+        apiMocks.getTwistClient.mockResolvedValue(client)
+        captureConsole()
+        await createProgram().parseAsync(['node', 'tw', 'thread', 'view', '500', '--json'])
+        expect(client.comments.getComments).toHaveBeenCalledTimes(1)
+        expect(client.comments.getComments).toHaveBeenCalledWith(
+            { threadId: 500, newerThan: undefined, limit: 50 },
+            { batch: true },
+        )
+    })
+})

@@ -87,6 +87,8 @@ tw thread view <ref> --unread    # Show only unread comments
 tw thread view <ref> --context 3 # Include 3 read comments before unread
 tw thread view <ref> --limit 20  # Limit number of comments
 tw thread view <ref> --since <date> # Comments newer than date
+tw thread view <ref> --all       # Complete comment history (pages past the 500-item API limit)
+tw thread view <ref> --all --ndjson # Full history, one record per line
 tw thread view <ref> --raw       # Show raw markdown
 tw thread create <channel-ref> "Title" "content"    # Create a new thread
 tw thread create <channel-ref> "Title" "content" --json       # Create and return as JSON
@@ -148,9 +150,13 @@ tw comment delete <comment-ref> --json         # Delete and return status as JSO
 ## Conversations (DMs/Groups)
 
 \`\`\`bash
+tw conversation list                      # List 1:1 and group conversations (50 most recent)
+tw conversation list --archive-filter all --all  # Every active + archived conversation
 tw conversation unread                    # List unread conversations
 tw conversation <conversation-ref>        # View conversation (shorthand for view)
 tw conversation view <conversation-ref>   # View conversation messages
+tw conversation view <ref> --since <date> --until <date> # Messages in a date range
+tw conversation view <ref> --all          # Complete message history (pages past the 500-item API limit)
 tw conversation with <user-ref>           # Find your 1:1 DM with a user
 tw conversation with <user-ref> --snippet # Include the latest message preview
 tw conversation with <user-ref> --include-groups # List any conversations with that user

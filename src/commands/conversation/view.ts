@@ -4,6 +4,7 @@ import { formatRelativeDate, parseDate } from '../../lib/dates.js'
 import { CliError } from '../../lib/errors.js'
 import { renderMarkdown } from '../../lib/markdown.js'
 import { colors, filterEntityFields } from '../../lib/output.js'
+import { fetchAllByObjIndex, MAX_API_PAGE_SIZE, parsePageSize } from '../../lib/pagination.js'
 import { resolveConversationId } from '../../lib/refs.js'
 import { buildConversationTitle, type ConversationViewOptions } from './helpers.js'
 
@@ -18,34 +19,55 @@ function parseDateOption(value: string | undefined, flag: string): Date | undefi
     return date
 }
 
+type DateRange = { newerThan?: Date; olderThan?: Date }
+
+async function fetchFirstPage(
+    conversationId: number,
+    limitOption: string | undefined,
+    { newerThan, olderThan }: DateRange,
+) {
+    const client = await getTwistClient()
+    const limit = limitOption ? parseInt(limitOption, 10) : 50
+    const [convResponse, messagesResponse] = await client.batch(
+        client.conversations.getConversation(conversationId, { batch: true }),
+        client.conversationMessages.getMessages(
+            { conversationId, limit, newerThan, olderThan },
+            { batch: true },
+        ),
+    )
+    return {
+        conversation: assertBatchData(convResponse, `conversation ${conversationId}`),
+        messages: assertBatchData(messagesResponse, `messages for conversation ${conversationId}`),
+    }
+}
+
 export async function viewConversation(
     ref: string,
     options: ConversationViewOptions,
 ): Promise<void> {
     const conversationId = resolveConversationId(ref)
     const client = await getTwistClient()
-    const limit = options.limit ? parseInt(options.limit, 10) : 50
-    const newerThan = parseDateOption(options.since, '--since')
-    const olderThan = parseDateOption(options.until, '--until')
+    const range: DateRange = {
+        newerThan: parseDateOption(options.since, '--since'),
+        olderThan: parseDateOption(options.until, '--until'),
+    }
 
-    const [convResponse, messagesResponse] = await client.batch(
-        client.conversations.getConversation(conversationId, { batch: true }),
-        client.conversationMessages.getMessages(
-            {
-                conversationId,
-                limit,
-                newerThan,
-                olderThan,
-            },
-            { batch: true },
-        ),
-    )
-
-    const conversation = assertBatchData(convResponse, `conversation ${conversationId}`)
-    const messages = assertBatchData(
-        messagesResponse,
-        `messages for conversation ${conversationId}`,
-    )
+    const { conversation, messages } = options.all
+        ? {
+              conversation: await client.conversations.getConversation(conversationId),
+              messages: await fetchAllByObjIndex(
+                  ({ fromObjIndex, limit }) =>
+                      client.conversationMessages.getMessages({
+                          conversationId,
+                          ...range,
+                          fromObjIndex,
+                          orderBy: 'asc',
+                          limit,
+                      }),
+                  parsePageSize(options.limit, MAX_API_PAGE_SIZE),
+              ),
+          }
+        : await fetchFirstPage(conversationId, options.limit, range)
 
     const userIds = [
         ...new Set<number>([...conversation.userIds, ...messages.map((m) => m.creator)]),

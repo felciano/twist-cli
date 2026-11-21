@@ -19,7 +19,8 @@ export function registerThreadCommand(program: Command): void {
         .option('--comment <id>', 'Show only a specific comment')
         .option('--unread', 'Show only unread comments (with original post for context)')
         .option('--context <n>', 'Include N read comments before unread (use with --unread)')
-        .option('--limit <n>', 'Max comments to show (default: 50)')
+        .option('--limit <n>', 'Max comments to show (default: 50); page size with --all')
+        .option('--all', 'Fetch the complete comment history (pages through all comments)')
         .option('--since <date>', 'Comments newer than')
         .option('--until <date>', 'Comments older than')
         .option('--raw', 'Show raw markdown instead of rendered')
@@ -32,7 +33,8 @@ export function registerThreadCommand(program: Command): void {
 Examples:
   tw thread 12345
   tw thread view 12345 --unread
-  tw thread view 12345 --limit 10 --json`,
+  tw thread view 12345 --limit 10 --json
+  tw thread view 12345 --all --ndjson`,
         )
         .action((ref, options) => {
             if (!ref) {

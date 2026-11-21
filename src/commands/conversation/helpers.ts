@@ -1,4 +1,4 @@
-import type { Conversation } from '@todoist/twist-sdk'
+import type { ArchiveFilter, Conversation } from '@todoist/twist-sdk'
 import chalk from 'chalk'
 import { buildOptionalBatchNameMap, getTwistClient } from '../../lib/api.js'
 import { formatRelativeDate } from '../../lib/dates.js'
@@ -11,6 +11,12 @@ import { colors, formatJson, formatNdjson, printEmpty } from '../../lib/output.j
 export type UnreadOptions = ViewOptions & { workspace?: string }
 
 export type ConversationViewOptions = PaginatedViewOptions
+
+export type ConversationListOptions = PaginatedViewOptions & {
+    workspace?: string
+    archiveFilter?: ArchiveFilter
+    snippet?: boolean
+}
 
 export type ConversationWithOptions = PaginatedViewOptions & {
     workspace?: string
@@ -82,9 +88,13 @@ export async function getConversationPages(
             break
         }
 
-        const nextBeforeId = page[page.length - 1]?.id
-        if (!nextBeforeId || nextBeforeId === beforeId) {
-            break
+        // before_id switches the API to id ordering; continue below the lowest id seen.
+        const nextBeforeId = Math.min(...page.map((conversation) => conversation.id))
+        if (beforeId !== undefined && nextBeforeId >= beforeId) {
+            throw new CliError(
+                'API_ERROR',
+                `Conversation pagination made no progress (before_id ${beforeId})`,
+            )
         }
         beforeId = nextBeforeId
     }

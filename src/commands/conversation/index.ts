@@ -1,6 +1,8 @@
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
+import { withCaseInsensitiveChoices } from '../../lib/completion.js'
 import { collect } from '../../lib/options.js'
 import { markConversationDone } from './done.js'
+import { listConversations } from './list.js'
 import { muteConversation } from './mute.js'
 import { replyToConversation } from './reply.js'
 import { unmuteConversation } from './unmute.js'
@@ -13,6 +15,39 @@ export function registerConversationCommand(program: Command): void {
         .command('conversation')
         .alias('convo')
         .description('Conversation (DM/group) operations')
+
+    conversation
+        .command('list [workspace-ref]')
+        .description('List 1:1 and group conversations in a workspace')
+        .option('--workspace <ref>', 'Workspace ID or name')
+        .addOption(
+            withCaseInsensitiveChoices(
+                new Option(
+                    '--archive-filter <filter>',
+                    'Show active, archived, or all conversations (default: active)',
+                ),
+                ['active', 'archived', 'all'],
+            ),
+        )
+        .option('--limit <n>', 'Max conversations to show (default: 50)')
+        .option('--all', 'Show every conversation (no limit)')
+        .option('--snippet', 'Include the latest message snippet in text output')
+        .option('--json', 'Output as JSON')
+        .option('--ndjson', 'Output as newline-delimited JSON')
+        .option('--full', 'Include all fields in JSON output')
+        .addHelpText(
+            'after',
+            `
+Examples:
+  tw conversation list
+  tw conversation list --archive-filter all --all --ndjson
+  tw conversation list "Acme" --limit 10 --json
+
+Notes:
+  Conversations are sorted by last activity, newest first. All server pages
+  are fetched before --limit is applied.`,
+        )
+        .action(listConversations)
 
     conversation
         .command('unread [workspace-ref]')
@@ -33,7 +68,8 @@ Examples:
     conversation
         .command('view [conversation-ref]', { isDefault: true })
         .description('Display a conversation with its messages')
-        .option('--limit <n>', 'Max messages to show (default: 50)')
+        .option('--limit <n>', 'Max messages to show (default: 50); page size with --all')
+        .option('--all', 'Fetch the complete message history (pages through all messages)')
         .option('--since <date>', 'Messages newer than')
         .option('--until <date>', 'Messages older than')
         .option('--raw', 'Show raw markdown instead of rendered')
@@ -46,7 +82,8 @@ Examples:
 Examples:
   tw conversation 12345
   tw conversation view 12345 --limit 20
-  tw conversation view 12345 --since 2025-01-01 --json`,
+  tw conversation view 12345 --since 2025-01-01 --json
+  tw conversation view 12345 --all --ndjson`,
         )
         .action((ref, options) => {
             if (!ref) {
